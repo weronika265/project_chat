@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "src/project_chat_backend"
+]
+resolver = "2"
