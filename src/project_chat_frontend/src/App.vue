@@ -12,54 +12,66 @@ export default {
       newChat: "",
       chats: [] as string[][],
       identity: undefined as undefined | Identity,
-      principalText: "",
+      principal: undefined as undefined | Principal,
       targetPrincipal: "",
     }
   },
   methods: {
-    async dodajChatMSG() {
-      if (!this.identity || this.identity.getPrincipal() === Principal.anonymous()) {
-        throw new Error('Please log in')
+    isUserLoggedIn() {
+      if (!this.identity || !this.principal || this.principal === Principal.anonymous()) {
+        throw new Error('Please log in');
       }
-      const targetPrincipal = Principal.fromText(this.targetPrincipal)
-      if (!targetPrincipal || targetPrincipal === Principal.anonymous()){
-        throw new Error('Wrong target')
+      return {
+        identity: this.identity,
+        principal: this.principal,
       }
-
-      const backend = createActor(canisterId, {
+    },
+    validateTargetPrincipal() {
+      const cleanTargetPrincipal = this.targetPrincipal.trim();
+      if (cleanTargetPrincipal === '') {
+        throw new Error('No principal');
+      }
+      const targetPrincipal = Principal.fromText(cleanTargetPrincipal);
+      if (!targetPrincipal || targetPrincipal === Principal.anonymous()) {
+        throw new Error('Wrong target');
+      }
+      return targetPrincipal;
+    },
+    getAuthClient() {
+      this.isUserLoggedIn();
+      return createActor(canisterId, {
         agentOptions: {
-          identity: this.identity
+          identity: this.identity,
         }
       });
-      await backend.add_chat_msg(this.newChat, targetPrincipal)
-      await this.pobierzChaty()
+    },
+    async dodajChatMSG() {
+      const targetPrincipal = this.validateTargetPrincipal();
+      const backend = this.getAuthClient();
+      await backend.add_chat_msg(this.newChat, targetPrincipal);
+      await this.pobierzChaty();
     },
     async pobierzChaty() {
-      if (!this.identity || this.identity.getPrincipal() === Principal.anonymous()) {
-        throw new Error('Please log in')
-      }
-      const targetPrincipal = Principal.fromText(this.targetPrincipal)
-      if (!targetPrincipal || targetPrincipal === Principal.anonymous()) {
-        throw new Error('Wrong target')
-      }
-      this.chats = await project_chat_backend.get_chat(this.identity.getPrincipal(), targetPrincipal)
+      const {identity, principal} = this.isUserLoggedIn();
+      const targetPrincipal = this.validateTargetPrincipal();
+
+      const chatPath = [targetPrincipal, identity.getPrincipal()].sort();
+      this.chats = await project_chat_backend.get_chat(chatPath);
     },
     async login() {
       const authClient = await AuthClient.create();
       await authClient.login({
-        identityProvider: "http://b77ix-eeaaa-aaaaa-qaada-cai.localhost:4943/"
+        identityProvider: "http://b77ix-eeaaa-aaaaa-qaada-cai.localhost:4943/",
+        onSuccess: async () => {
+          const identity = authClient.getIdentity();
+          this.principal = identity.getPrincipal();
+          this.identity = identity;
+          console.log("Zalogowano", this.principal);
+          await this.pobierzChaty();
+        }
       })
-
-      const identity = authClient.getIdentity();
-      this.principalText = identity.getPrincipal().toText()
-      console.log("Zalogowano", this.principalText)
-      this.identity = identity;
-      await this.pobierzChaty()
     }
   },
-  mounted() {
-    this.pobierzChaty()
-  }
 }
 </script>
 
@@ -68,7 +80,7 @@ export default {
     <img src="/logo2.svg" alt="DFINITY logo" />
     <br />
     <br />
-    {{ principalText }}
+    {{ principal }}
     <button @click='login'>Login</button>
     <div>
       <input v-model='targetPrincipal'>
