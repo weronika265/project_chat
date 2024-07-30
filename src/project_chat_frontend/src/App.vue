@@ -1,41 +1,64 @@
 <script lang="ts">
 import { ref } from 'vue';
-import { project_chat_backend } from '../../declarations/project_chat_backend';
+import { canisterId, createActor, project_chat_backend } from '../../declarations/project_chat_backend';
 import { AuthClient } from '@dfinity/auth-client';
 import { HttpAgent } from '@dfinity/agent';
 import type { Identity } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 
 export default {
   data() {
     return {
-      newNote: "",
-      notes: [] as string[],
+      newChat: "",
+      chats: [] as string[][],
       identity: undefined as undefined | Identity,
+      principalText: "",
+      targetPrincipal: "",
     }
   },
   methods: {
-    async dodajNotatke() {
-      await project_chat_backend.add_note(this.newNote)
-      await this.pobierzNotatki()
+    async dodajChatMSG() {
+      if (!this.identity || this.identity.getPrincipal() === Principal.anonymous()) {
+        throw new Error('Please log in')
+      }
+      const targetPrincipal = Principal.fromText(this.targetPrincipal)
+      if (!targetPrincipal || targetPrincipal === Principal.anonymous()){
+        throw new Error('Wrong target')
+      }
+
+      const backend = createActor(canisterId, {
+        agentOptions: {
+          identity: this.identity
+        }
+      });
+      await backend.add_chat_msg(this.newChat, targetPrincipal)
+      await this.pobierzChaty()
     },
-    async pobierzNotatki() {
-      this.notes = await project_chat_backend.get_notes()
+    async pobierzChaty() {
+      if (!this.identity || this.identity.getPrincipal() === Principal.anonymous()) {
+        throw new Error('Please log in')
+      }
+      const targetPrincipal = Principal.fromText(this.targetPrincipal)
+      if (!targetPrincipal || targetPrincipal === Principal.anonymous()) {
+        throw new Error('Wrong target')
+      }
+      this.chats = await project_chat_backend.get_chat(this.identity.getPrincipal(), targetPrincipal)
     },
     async login() {
       const authClient = await AuthClient.create();
       await authClient.login({
-        identityProvider: "http://avqkn-guaaa-aaaaa-qaaea-cai.localhost:4943/"
+        identityProvider: "http://b77ix-eeaaa-aaaaa-qaada-cai.localhost:4943/"
       })
 
       const identity = authClient.getIdentity();
-      console.log("Zalogowano", identity.getPrincipal())
+      this.principalText = identity.getPrincipal().toText()
+      console.log("Zalogowano", this.principalText)
       this.identity = identity;
-      
-     //const agent = new HttpAgent({ identity });
+      await this.pobierzChaty()
     }
   },
   mounted() {
-    this.pobierzNotatki()
+    this.pobierzChaty()
   }
 }
 </script>
@@ -45,14 +68,20 @@ export default {
     <img src="/logo2.svg" alt="DFINITY logo" />
     <br />
     <br />
-    {{ identity?.getPrincipal() }}
+    {{ principalText }}
     <button @click='login'>Login</button>
     <div>
-      {{ notes }}
+      <input v-model='targetPrincipal'>
+      <button @click='pobierzChaty'>Pobierz chat</button>
     </div>
     <div>
-      <textarea v-model="newNote"></textarea>
-      <button @click="dodajNotatke">
+      <div v-for="chat in chats[0]">
+        {{ chat }}
+      </div>
+    </div>
+    <div>
+      <textarea v-model="newChat"></textarea>
+      <button @click="dodajChatMSG">
         Dodaj notatkę
       </button>
     </div>
