@@ -5,15 +5,19 @@ import { AuthClient } from '@dfinity/auth-client';
 import { HttpAgent } from '@dfinity/agent';
 import type { Identity } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
+import type { UserData } from '../../declarations/project_chat_backend/project_chat_backend.did';
 
 export default {
   data() {
     return {
-      newChat: "",
+      newChat: '',
       chats: [] as string[][],
       identity: undefined as undefined | Identity,
       principal: undefined as undefined | Principal,
-      targetPrincipal: "",
+      targetPrincipal: '',
+      userData: undefined as undefined | UserData,
+      newUsername: '',
+      allUsers: [] as [Principal, UserData][],
     }
   },
   methods: {
@@ -64,12 +68,42 @@ export default {
         identityProvider: "http://b77ix-eeaaa-aaaaa-qaada-cai.localhost:4943/",
         onSuccess: async () => {
           const identity = authClient.getIdentity();
-          this.principal = identity.getPrincipal();
+          const principal = identity.getPrincipal();
+          this.principal = principal;
           this.identity = identity;
-          console.log("Zalogowano", this.principal);
-          await this.pobierzChaty();
+          console.log('Zalogowano', this.principal);
+          await this.getUserData();
+          await this.getAllUsers();
         }
       })
+    },
+    async logout() {
+      const authClient = await AuthClient.create();
+      await authClient.logout();
+      this.identity = undefined;
+      this.principal = undefined;
+      this.chats = [];
+      this.userData = undefined;
+    },
+    async registerUsername() {
+      const trimmedUsername = this.newUsername.trim();
+      const backend = this.getAuthClient()
+      await backend.register(trimmedUsername);
+      await this.getUserData();
+      await this.getAllUsers();
+    },
+    async getUserData() {
+      const {principal} = this.isUserLoggedIn();
+      const maybeUserData = await project_chat_backend.get_user(principal as Principal);
+      if (maybeUserData.length === 0) {
+        this.userData = undefined;
+      } else {
+        this.userData = maybeUserData[0];
+      }
+      console.log('User data', this.userData);
+    },
+    async getAllUsers() {
+      this.allUsers = await project_chat_backend.get_users();
     }
   },
 }
@@ -77,28 +111,35 @@ export default {
 
 <template>
   <main>
-    <img src="/logo2.svg" alt="DFINITY logo" />
-    <br />
-    <br />
-    {{ principal }}
-    <button @click='login'>Login</button>
-    <div>
-      <input v-model='targetPrincipal'>
-      <button @click='pobierzChaty'>Pobierz chat</button>
+    <button v-if="!principal" @click='login'>Login</button>
+    <button v-if="principal" @click='logout'>Logout</button>
+    <div v-if="principal && !userData">
+      <input v-model="newUsername" placeholder="nick" />
+      <button @click="registerUsername">Register</button>
     </div>
-    <div>
-      <div v-for="chat in chats[0]">
-        {{ chat }}
+    <div v-if="principal && userData">
+      {{ userData.nickname }}
+      <div v-if="allUsers">
+        <select v-model="targetPrincipal">
+          <option disabled value="">Please select one</option>
+          <option v-for="[userPrincipal, userData] in allUsers" :value="userPrincipal.toText()">
+            {{ userData.nickname }}
+          </option>
+        </select>
       </div>
-    </div>
-    <div>
-      <textarea v-model="newChat"></textarea>
-      <button @click="dodajChatMSG">
-        Dodaj notatkę
-      </button>
+      <div>
+        <div v-for="chat in chats[0]">
+          {{ chat }}
+        </div>
+      </div>
+      <div>
+        <textarea v-model="newChat" placeholder="wiadomość"></textarea>
+        <button @click="dodajChatMSG">Dodaj wiadomość</button>
+      </div>
     </div>
   </main>
 </template>
 
-<!-- const agent = await HttpAgent.create({ identity: this.identity })
-      this.backend = createActor(canisterId, { agent }) -->
+<!-- odświerzanie chatów po zalogowaniu -> <select v-model="targetPrincipal" @change=""> ? -->
+<!-- przechoywawanie danych uzytkownika (np. localstorage, ostatni czat [principal] i otworzyć go przy logowaniu) -->
+<!-- pinia, tailwind, itd. -->
